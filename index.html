@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人生交叉點 - 青少年隨機抉擇引導</title>
+    <style>
+        :root {
+            --primary-color: #2e5a44;
+            --accent-color: #4a7c59;
+            --bg-color: #f4f9f6;
+            --text-color: #333333;
+        }
+
+        body {
+            font-family: "Microsoft JhengHei", -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            max-width: 800px;
+            width: 90%;
+            padding: 40px;
+            background: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(46, 90, 68, 0.1);
+            border: 2px solid rgba(46, 90, 68, 0.05);
+        }
+
+        h1 {
+            color: var(--primary-color);
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1rem;
+            margin-bottom: 40px;
+        }
+
+        .number-box {
+            font-size: 4.5rem;
+            font-weight: bold;
+            color: var(--accent-color);
+            background: #eef5f1;
+            padding: 15px 40px;
+            border-radius: 12px;
+            display: inline-block;
+            min-width: 180px;
+            letter-spacing: 5px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(4a, 124, 89, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .number-box.rolling {
+            color: #d97706;
+            background: #fef3c7;
+            transform: scale(1.05);
+        }
+
+        .question-box {
+            font-size: 1.6rem;
+            font-weight: 600;
+            line-height: 1.6;
+            min-height: 120px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 20px 0 40px 0;
+            padding: 0 20px;
+            color: #111827;
+        }
+
+        .draw-btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 16px 45px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(46, 90, 68, 0.3);
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        .draw-btn:hover {
+            background-color: var(--accent-color);
+            transform: translateY(-2px);
+            box-shadow: 0 7px 20px rgba(46, 90, 68, 0.4);
+        }
+
+        .draw-btn:active {
+            transform: translateY(1px);
+        }
+
+        .draw-btn:disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .tip {
+            margin-top: 25px;
+            font-size: 0.9rem;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>人生交叉點</h1>
+        <div class="subtitle">青少年的二選一靈魂抉擇</div>
+
+        <div id="numberDisplay" class="number-box">0000</div>
+        <div id="questionDisplay" class="question-box">正在連線至雲端題庫，請稍候...</div>
+        <button id="drawBtn" class="draw-btn" onclick="startDraw()" disabled>隨機抽取問題</button>
+
+        <div class="tip">💡 提示：點擊按鈕或直接按下鍵盤【Space 空白鍵】皆可抽題</div>
+    </div>
+
+    <script>
+        // 🛠️ 【請在第 106 行修改】替換成你自己的 Google Sheet ID
+        const SHEET_ID = '16-fcL8ymIDpUa59R8FPBBWPSoO60MFt4/edit?gid=291797696#gid=291797696'; 
+        
+        // 使用更穩定的 tsv 格式導出法，避免 Google API 的 json 格式變更限制
+        const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/pub?output=tsv`;
+
+        let questions = [];
+        let isRolling = false;
+
+        const numberDisplay = document.getElementById('numberDisplay');
+        const questionDisplay = document.getElementById('questionDisplay');
+        const drawBtn = document.getElementById('drawBtn');
+
+        async function fetchQuestions() {
+            try {
+                const response = await fetch(SHEET_URL);
+                if (!response.ok) throw new Error('網路回應不成功');
+                const tsvText = await response.text();
+                
+                // 解析 TSV 資料
+                const rows = tsvText.split('\n').map(row => row.split('\t'));
+                
+                if(rows.length <= 1) {
+                    throw new Error('試算表內沒有足夠的資料');
+                }
+
+                // 聰明自動判斷：找出字數最長的那一欄當作題目欄
+                let targetColIndex = 0;
+                let maxLen = 0;
+                // 拿前幾行來測試哪一欄最像題目
+                for (let i = 1; i < Math.min(rows.length, 5); i++) {
+                    for (let j = 0; j < rows[i].length; j++) {
+                        if (rows[i][j] && rows[i][j].length > maxLen) {
+                            maxLen = rows[i][j].length;
+                            targetColIndex = j;
+                        }
+                    }
+                }
+
+                // 提取題目，過濾掉第一行的標頭與空白行
+                questions = rows
+                    .slice(1)
+                    .map(row => row[targetColIndex] ? row[targetColIndex].trim().replace(/^"|"$/g, '') : '')
+                    .filter(q => q.length > 5); // 過濾掉太短的無效字串
+
+                if (questions.length === 0) throw new Error('未能成功擷取到有效的題目');
+
+                questionDisplay.innerText = "準備好面對挑戰了嗎？按下按鈕或空白鍵開始抽取！";
+                drawBtn.disabled = false;
+                console.log(`成功載入 ${questions.length} 個問題，目標欄位索引：${targetColIndex}`);
+            } catch (error) {
+                console.error('抓取資料庫失敗:', error);
+                questionDisplay.innerHTML = "<span style='color:#dc2626; font-size:1.3rem;'>連線資料庫失敗！<br><span style='font-size:1rem; color:#666;'>請檢查密鑰是否正確，並確認試算表已「發布到網路」（非單純共用）。</span></span>";
+                drawBtn.disabled = true;
+            }
+        }
+
+        function startDraw() {
+            if (isRolling || questions.length === 0) return;
+            
+            isRolling = true;
+            drawBtn.disabled = true;
+            numberDisplay.classList.add('rolling');
+            questionDisplay.style.opacity = "0.3";
+            questionDisplay.innerText = "命運交叉點正在瘋狂運算中...";
+
+            const duration = 3000; 
+            const intervalTime = 50; 
+            const timer = setInterval(() => {
+                const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+                numberDisplay.innerText = randomNum;
+            }, intervalTime);
+
+            setTimeout(() => {
+                clearInterval(timer);
+                
+                const randomIndex = Math.floor(Math.random() * questions.length);
+                const finalQuestion = questions[randomIndex];
+
+                // 顯示該題在資料庫中的實際編號
+                const displayIdx = (randomIndex + 1).toString().padStart(4, '0');
+                numberDisplay.innerText = displayIdx;
+
+                questionDisplay.innerText = finalQuestion;
+                questionDisplay.style.opacity = "1";
+
+                numberDisplay.classList.remove('rolling');
+                isRolling = false;
+                drawBtn.disabled = false;
+            }, duration);
+        }
+
+        window.addEventListener('keydown', (event) => {
+            if (event.code === 'Space' || event.keyCode === 32) {
+                if (document.activeElement === drawBtn) {
+                    event.preventDefault(); 
+                }
+                startDraw();
+            }
+        });
+
+        fetchQuestions();
+    </script>
+</body>
+</html>
